@@ -31,17 +31,38 @@ This tool automates the process of migrating Terraform modules from Azure DevOps
    git clone https://github.com/Cobra-IT/Devops-Spacelift-Module-Migration.git
    ```
 
-2. Install required dependencies:
+2. Create a virtual environment (recommended):
+   ```bash
+   # Create a virtual environment
+   python -m venv venv
+
+   # Activate the virtual environment
+   # On Windows:
+   venv\Scripts\activate
+   # On macOS/Linux:
+   source venv/bin/activate
+   ```
+
+3. Install required dependencies:
    ```bash
    pip install -r requirements.txt
    ```
 
 ## Required Python Packages
 
-- requests
-- GitPython
-- keyring
-- typing
+The following packages will be installed from the requirements.txt file:
+- requests>=2.25.0
+- GitPython>=3.1.0
+- keyring>=23.0.0
+- typing>=3.7.4
+
+If you need to manually create the requirements.txt file, save the following content:
+```
+requests>=2.25.0
+GitPython>=3.1.0
+keyring>=23.0.0
+typing>=3.7.4
+```
 
 ## Usage
 
@@ -80,6 +101,11 @@ The script will guide you through the following steps:
 - **Authentication Issues**: Ensure your Azure DevOps PAT has sufficient permissions
 - **Spacelift Connection Problems**: Verify your Spacelift CLI is properly configured
 - **Repository Access Errors**: Check that your Azure DevOps integration in Spacelift is properly set up
+- **Dependency Issues**: If you encounter any dependency-related errors, try upgrading pip:
+  ```bash
+  pip install --upgrade pip
+  ```
+- **Spacelift CLI**: Remember that the script requires the Spacelift CLI (`spacectl`) to be installed separately, as it's not a Python package. Please refer to Spacelift documentation for instructions on installing and configuring the CLI.
 
 ## Logs
 
