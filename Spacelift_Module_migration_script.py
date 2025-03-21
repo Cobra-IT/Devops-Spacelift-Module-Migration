@@ -45,13 +45,6 @@ class InteractiveMigration:
         print("✅ Successfully authenticated with Spacelift")
         return True
 
-    def store_spacelift_credentials(self, token: str):
-        keyring.set_password(self.service_id, "spacelift", token)
-        print("✅ Spacelift credentials securely stored for future use")
-
-    def get_stored_spacelift_credentials(self) -> str:
-        return keyring.get_password(self.service_id, "spacelift")
-    
     def store_credentials(self, pat: str):
         keyring.set_password(self.service_id, self.username, pat)
         print("✅ Credentials securely stored for future use")
@@ -307,111 +300,39 @@ class InteractiveMigration:
     
         print("⚠️  Token requires module creation permissions. Please check token settings in Spacelift.")
         return False
-    def store_spacelift_credentials(self, key_id: str, key_secret: str):
-        keyring.set_password(self.service_id, "spacelift_key_id", key_id)
-        keyring.set_password(self.service_id, "spacelift_key_secret", key_secret)
-        print("✅ Spacelift credentials securely stored for future use")
-
-    def get_stored_spacelift_credentials(self) -> tuple[str, str]:
-        key_id = keyring.get_password(self.service_id, "spacelift_key_id")
-        key_secret = keyring.get_password(self.service_id, "spacelift_key_secret")
-        return key_id, key_secret
-    def validate_spacelift_credentials(self, key_id: str, key_secret: str) -> bool:
-        api_url = f"https://{self.spacelift_org}.app.spacelift.io/graphql"
-        
-        # Set required environment variables for Spacelift authentication
-        os.environ["SPACELIFT_API_KEY_ENDPOINT"] = f"https://{self.spacelift_org}.app.spacelift.io"
-        os.environ["SPACELIFT_API_KEY_ID"] = key_id
-        os.environ["SPACELIFT_API_KEY_SECRET"] = key_secret
-        
-        headers = {
-            "Content-Type": "application/json"
-        }
-        
-        query = """
-        query ValidateModulePermissions {
-            viewer {
-                id
-            }
-        }
-        """
-        
-        try:
-            response = requests.post(
-                api_url,
-                json={"query": query},
-                headers=headers,
-                auth=(key_id, key_secret)
-            )
-            
-            if response.status_code == 200 and "errors" not in response.json():
-                print("✅ Spacelift authentication successful!")
-                return True
-                
-            print(f"🔍 API Response: {response.json()}")
-        except Exception as e:
-            print(f"🔍 Connection error: {str(e)}")
-        
-        return False
-
-
-    def get_valid_spacelift_token(self) -> tuple[str, str]:
-        while True:
-            print("\nPlease enter your Spacelift API credentials")
-            print("These can be found in Spacelift UI > Settings > API Keys")
-            print("Enter 'q' to quit the script")
-            
-            key_id = input("Enter your Spacelift API Key ID: ").strip()
-            if key_id.lower() == 'q':
-                print("Exiting script...")
-                sys.exit(0)
-                
-            key_secret = input("Enter your Spacelift API Key Secret: ").strip()
-            if key_secret.lower() == 'q':
-                print("Exiting script...")
-                sys.exit(0)
-
-            # Set environment variables for API authentication
-            os.environ["SPACELIFT_API_KEY_ENDPOINT"] = f"https://{self.spacelift_org}.app.spacelift.io"
-            os.environ["SPACELIFT_API_KEY_ID"] = key_id
-            os.environ["SPACELIFT_API_KEY_SECRET"] = key_secret
-                
-            if self.validate_spacelift_credentials(key_id, key_secret):
-                store = input("Would you like to store these credentials securely for future use? (y/n): ")
-                if store.lower() == 'y':
-                    self.store_spacelift_credentials(key_id, key_secret)
-                return key_id, key_secret
-            
-            print("❌ Invalid credentials or insufficient permissions. Try again or enter 'q' to quit.")
 
     def format_module_name(self, name: str) -> str:
-        # Convert to lowercase
+        """Format module name to meet Spacelift requirements"""
+        # Convert to lowercase first
         formatted = name.lower()
-        # Replace spaces with underscores
-        formatted = formatted.replace(' ', '_')
+        # Replace any spaces with dashes
+        formatted = formatted.replace(' ', '-')
         # Remove any special characters except dashes and underscores
         formatted = ''.join(c for c in formatted if c.isalnum() or c in '-_')
         # Ensure it starts and ends with letters
         formatted = formatted.strip('-_')
+        
+        print(f"🏷️ Formatted module name: {formatted}")
         return formatted
+
+    def get_default_branch(self, local_path: str) -> str:
+        """Detect the default branch name from the repository"""
+        repo = Repo(local_path)
+        default_branch = repo.active_branch.name
+        print(f"📌 Detected default branch: {default_branch}")
+        return default_branch
 
     def create_spacelift_module(self, module_name: str, local_path: str):
         print(f"\n🚀 Creating Spacelift module: {module_name}")
-    
-        # Format the module name to meet Spacelift requirements
-        safe_module_name = self.format_module_name(module_name)
     
         # Space selection at module level
         print("\n📍 Spacelift Space Selection")
         target_space = input(f"Enter target Spacelift space for module '{module_name}' (press Enter for root space): ").strip() or "root"
         print(f"✅ Creating module in space: {target_space}")
     
-        # Store the target space for version creation
-        self.current_space = target_space
-    
         api_url = f"https://{self.spacelift_org}.app.spacelift.io/graphql"
+        safe_module_name = self.format_module_name(module_name)
     
-        # Use the stored bearer token from initial authentication
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.bearer_token}"
@@ -426,16 +347,19 @@ class InteractiveMigration:
         }
         """
     
+        # Get the actual default branch
+        default_branch = self.get_default_branch(local_path)
+    
         variables = {
             "input": {
-                "name": module_name,
-                "description": f"Terraform module imported from Azure DevOps: {module_name}",
+                "name": safe_module_name,
+                "description": f"Terraform module imported from Azure DevOps: {safe_module_name}",
                 "terraformProvider": "default",
                 "provider": "AZURE_DEVOPS",
-                "repository": module_name,
+                "repository": safe_module_name,
                 "namespace": self.azure_project,
                 "space": target_space,
-                "branch": "main",
+                "branch": default_branch,
                 "projectRoot": "",
                 "labels": [],
                 "administrative": False,
@@ -443,14 +367,14 @@ class InteractiveMigration:
                 "localPreviewEnabled": True,
                 "protectFromDeletion": True,
                 "updateInput": {
-                    "name": module_name,
-                    "description": f"Terraform module imported from Azure DevOps: {module_name}",
+                    "name": safe_module_name,
+                    "description": f"Terraform module imported from Azure DevOps: {safe_module_name}",
                     "terraformProvider": "default",
                     "provider": "AZURE_DEVOPS",
-                    "repository": module_name,
+                    "repository": safe_module_name,
                     "namespace": self.azure_project,
                     "space": target_space,
-                    "branch": "main",
+                    "branch": default_branch,
                     "projectRoot": "",
                     "labels": [],
                     "administrative": False,
@@ -474,8 +398,6 @@ class InteractiveMigration:
             if "errors" not in result:
                 print(f"✅ Module {module_name} successfully created")
                 self.log_migration(f"Created module: {module_name}")
-                # Store the created module ID
-                self.current_module_id = result['data']['moduleCreate']['id']
                 versions = self.get_repo_versions(local_path)
                 for tag in versions['tags']:
                     self.create_module_version(module_name, tag)
@@ -550,6 +472,30 @@ class InteractiveMigration:
             print(f"Please ensure your Spacelift integration has access to {self.azure_org}/{self.azure_project}")
             return False
 
+    def select_repositories(self, repos: List[dict]) -> List[dict]:
+        print("\n📋 Available repositories:")
+        for idx, repo in enumerate(repos, 1):
+            print(f"{idx}. {repo['name']}")
+        
+        selection = input("\nPress Enter to migrate all repositories, or enter a number to select specific repo: ").strip()
+    
+        if not selection:
+            print("✨ Migrating all repositories")
+            return repos
+        
+        try:
+            idx = int(selection) - 1
+            if 0 <= idx < len(repos):
+                selected_repo = repos[idx]
+                print(f"\n✨ Selected repository for migration: {selected_repo['name']}")
+                return [selected_repo]
+            else:
+                print("Invalid selection, migrating all repositories")
+                return repos
+        except ValueError:
+            print("Invalid input, migrating all repositories")
+            return repos
+
     def run(self):
         print("Welcome to the Azure DevOps to Spacelift Migration Tool!")
         self.log_migration("Starting migration process")
@@ -563,24 +509,21 @@ class InteractiveMigration:
             return
 
         repos = self.get_azure_repos()
-        
-        print("\n📋 Available repositories:")
-        for idx, repo in enumerate(repos, 1):
-            print(f"{idx}. {repo['name']}")
+        selected_repos = self.select_repositories(repos)
 
         proceed = input("\nWould you like to proceed with the migration? (y/n): ")
         if proceed.lower() != 'y':
             print("Migration cancelled. Exiting...")
             return
 
-        # Add Spacelift authentication here
+        # Spacelift authentication now happens after user confirms they want to proceed
         if not self.get_spacectl_token():
             print("Spacelift authentication failed. Exiting...")
             return
 
         os.makedirs(self.temp_dir, exist_ok=True)
 
-        for repo in repos:
+        for repo in selected_repos:
             repo_name = repo["name"]
             repo_url = repo["remoteUrl"]
             local_path = os.path.join(self.temp_dir, repo_name)
